@@ -8,8 +8,9 @@ const bannerFiles = Array.from(Deno.readDirSync(assetsPath))
   .filter((file) => file.isFile && file.name.endsWith(".png"))
   .map((file) => path.join(assetsPath, file.name));
 
-const pickRandomBanner = () =>
-  bannerFiles[Math.floor(Math.random() * bannerFiles.length)];
+const pickBanner = () =>
+  bannerFiles.find((file) => path.basename(file).toLowerCase().includes("ice")) ??
+  bannerFiles[0];
 
 type Palette = { text: string; ring: string };
 
@@ -29,7 +30,7 @@ const paletteFor = (bannerFile: string): Palette => {
 };
 
 export const buildWelcomeImage = async (member: GuildMember) => {
-  const bannerFile = pickRandomBanner();
+  const bannerFile = pickBanner();
   const palette = paletteFor(bannerFile);
   const background = await loadImage(bannerFile);
   const canvas = createCanvas(background.width, background.height);
