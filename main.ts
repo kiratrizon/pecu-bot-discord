@@ -7,6 +7,7 @@ let botStatus: status = "online";
 import { REST, Routes } from "discord.js";
 // import * as fs from "node:fs";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const commandsPath = path.join(Deno.cwd(), "commands");
 
@@ -20,7 +21,7 @@ const deployCommands = async () => {
 
     for (const file of commandFiles) {
       const filePath = path.join(commandsPath, file.name);
-      const command = (await import(filePath))?.default;
+      const command = (await import(pathToFileURL(filePath).href))?.default;
 
       if (`data` in command && `execute` in command) {
         commands.push(command.data.toJSON());
@@ -53,7 +54,18 @@ import {
   ChatInputCommandInteraction,
 } from "discord.js";
 
-import { buildWelcomeImage } from "./welcome.ts";
+import { buildWelcomeImage, buildByeImage } from "./welcome.ts";
+
+const ordinal = (n: number) => {
+  const rule = new Intl.PluralRules("en", { type: "ordinal" }).select(n);
+  const suffixes: Record<string, string> = {
+    one: "st",
+    two: "nd",
+    few: "rd",
+    other: "th",
+  };
+  return `${n}${suffixes[rule] ?? "th"}`;
+};
 
 type Command = {
   data: { name: string; toJSON: () => unknown };
@@ -87,7 +99,7 @@ const commandFiles = Deno.readDirSync(commandsPath).filter(
 
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file.name);
-  const command = (await import(filePath))?.default;
+  const command = (await import(pathToFileURL(filePath).href))?.default;
 
   if (`data` in command && `execute` in command) {
     client.commands.set(command.data.name, command);
@@ -180,12 +192,50 @@ client.on(Events.GuildMemberAdd, async (member) => {
     }
 
     const image = await buildWelcomeImage(member);
+    const memberCount = ordinal(member.guild.memberCount);
 
     await channel.send({
+      content: `Welcome <@${member.id}>, you are the ${memberCount} member.`,
       files: [{ attachment: image, name: "welcome.png" }],
     });
   } catch (e) {
     console.error("Error sending welcome banner", e);
+  }
+
+  try {
+    const autoRoleId = Deno.env.get("AUTO_ROLE_ID");
+    if (autoRoleId) {
+      await member.roles.add(autoRoleId);
+    } else {
+      console.log("AUTO_ROLE_ID is not set, skipping auto role.");
+    }
+  } catch (e) {
+    console.error("Error assigning auto role", e);
+  }
+});
+
+client.on(Events.GuildMemberRemove, async (member) => {
+  try {
+    const channelId = Deno.env.get("BYE_CHANNEL_ID");
+    if (!channelId) {
+      console.log("BYE_CHANNEL_ID is not set, skipping bye banner.");
+      return;
+    }
+
+    const channel = await client.channels.fetch(channelId);
+    if (!channel?.isSendable()) {
+      console.log(`Channel ${channelId} is not a text channel.`);
+      return;
+    }
+
+    const image = await buildByeImage(member);
+
+    await channel.send({
+      files: [{ attachment: image, name: "bye.png" }],
+      content: "Salamat, wag ka ng bumalik!"
+    });
+  } catch (e) {
+    console.error("Error sending bye banner", e);
   }
 });
 
